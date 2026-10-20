@@ -3,7 +3,7 @@ import datetime
 import json
 import pathlib
 import re
-import smtplib
+import subprocess
 import sys
 import time
 import urllib
@@ -11,7 +11,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Iterable
-from email.message import EmailMessage
 
 import requests
 from doctolib_url_builder import (
@@ -77,58 +76,61 @@ delivery_settings = runtime_settings["notifications"]
 already_alerted_urls = set()
 
 
-def publish_ntfy_alert(alert_text):
-    """Send a notification via ntfy.sh."""
+def escape_applescript(text):
+    """Escape a string for safe embedding inside an AppleScript string literal."""
 
-    ntfy_config = delivery_settings.get("ntfy") or {}
-    topic_name = ntfy_config.get("topic")
-    if not topic_name:
-        raise ValueError("Missing notifications.ntfy.topic in settings.json")
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
-    ntfy_server = (ntfy_config.get("server") or "https://ntfy.sh").rstrip("/")
-    response = requests.post(
-        f"{ntfy_server}/{topic_name}",
-        data=alert_text.encode("utf-8"),
-        headers={"Title": "Doctolib checker", "Priority": "default"},
-        timeout=15,
+
+def show_macos_notification(alert_text):
+    """Show a macOS user notification via AppleScript."""
+
+    script = (
+        f'display notification "{escape_applescript(alert_text)}" '
+        f'with title "Doctolib checker" sound name "Glass"'
     )
-    response.raise_for_status()
+    subprocess.run(
+        ["osascript", "-e", script],
+        check=True,
+        timeout=15,
+        capture_output=True,
+        text=True,
+    )
 
 
-def send_gmail_alert(alert_text):
-    """Send an email via Gmail SMTP using App Password."""
+def create_macos_reminder(alert_text):
+    """Create a reminder in macOS Reminders via AppleScript."""
 
-    email_config = delivery_settings.get("email") or {}
-    sender_mailbox = email_config.get("sender")
-    app_secret = email_config.get("app_password")
-    recipient_mailbox = email_config.get("recipient")
-    smtp_host = email_config.get("smtp_host") or "smtp.gmail.com"
-    smtp_port = int(email_config.get("smtp_port", 587))
+    macos_config = delivery_settings.get("macos") or {}
+    list_name = macos_config.get("reminder_list") or "Reminders"
+    escaped_text = escape_applescript(alert_text)
+    escaped_list = escape_applescript(list_name)
 
-    if not sender_mailbox or not app_secret or not recipient_mailbox:
-        raise ValueError(
-            "Missing notifications.email sender/app_password/recipient in settings.json"
-        )
+    script = f'''tell application "Reminders"
+    if not (exists list "{escaped_list}") then
+        make new list with properties {{name:"{escaped_list}"}}
+    end if
+    tell list "{escaped_list}"
+        make new reminder with properties {{name:"Doctolib appointment available", body:"{escaped_text}"}}
+    end tell
+end tell'''
 
-    email_message = EmailMessage()
-    email_message["Subject"] = "Doctolib checker alert"
-    email_message["From"] = sender_mailbox
-    email_message["To"] = recipient_mailbox
-    email_message.set_content(alert_text)
-
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as smtp_session:
-        smtp_session.starttls()
-        smtp_session.login(sender_mailbox, app_secret)
-        smtp_session.send_message(email_message)
+    subprocess.run(
+        ["osascript", "-e", script],
+        check=True,
+        timeout=15,
+        capture_output=True,
+        text=True,
+    )
 
 
-def dispatch_alert(alert_text, via_ntfy=False, via_email=False):
+def dispatch_alert(alert_text, via_notification=False, via_reminder=False):
     """Send alerts via selected channels."""
 
-    if via_ntfy:
-        publish_ntfy_alert(alert_text)
-    if via_email:
-        send_gmail_alert(alert_text)
+    if via_notification:
+        show_macos_notification(alert_text)
+    if via_reminder:
+        create_macos_reminder(alert_text)
 
 
 def normalize_availabilities_url(url):
@@ -576,7 +578,7 @@ def parse_slot_timestamp(date):
     return str(datetime.datetime.strptime(date[:-10], "%Y-%m-%dT%H:%M:%S"))
 
 
-def main(use_ntfy, use_email):
+def main(use_notification, use_reminder):
     global already_alerted_urls
 
     try:
@@ -594,8 +596,8 @@ def main(use_ntfy, use_email):
     print(f"  Interval: {check_interval_seconds}s")
     dispatch_alert(
         f"Doctolib checker started.\nChecking {len(urls)} doctor(s) for appointments up to {search_end_day}.",
-        via_ntfy=use_ntfy,
-        via_email=use_email,
+        via_notification=use_notification,
+        via_reminder=use_reminder,
     )
 
     iteration = 0
@@ -623,8 +625,8 @@ def main(use_ntfy, use_email):
                                 already_alerted_urls.add(url)
                                 dispatch_alert(
                                     f"New appointment available on Doctolib (Doctor {i})! \nNumber of available appointments: {json_data['total']} \nEarliest appointment: {parse_slot_timestamp(closest_slot)}",
-                                    via_ntfy=use_ntfy,
-                                    via_email=use_email,
+                                    via_notification=use_notification,
+                                    via_reminder=use_reminder,
                                 )
                         else:
                             print(f"total={json_data['total']} but no slot before limit date.")
@@ -639,8 +641,8 @@ def main(use_ntfy, use_email):
                             already_alerted_urls.add(url)
                             dispatch_alert(
                                 f"New appointment available on Doctolib (Doctor {i}) within your limit time! \nEarliest appointment: {parse_slot_timestamp(json_data['next_slot'])}",
-                                via_ntfy=use_ntfy,
-                                via_email=use_email,
+                                via_notification=use_notification,
+                                via_reminder=use_reminder,
                             )
 
                     else:
@@ -663,8 +665,8 @@ def main(use_ntfy, use_email):
             print(f"\n[{now}] ERROR: {e}")
             dispatch_alert(
                 f"An error occured while running the Doctolib script: {e}",
-                via_ntfy=use_ntfy,
-                via_email=use_email,
+                via_notification=use_notification,
+                via_reminder=use_reminder,
             )
 
     return 0
@@ -672,22 +674,22 @@ def main(use_ntfy, use_email):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--notify", action="store_true", help="Send alerts through ntfy.sh")
-    parser.add_argument("--email", action="store_true", help="Send alerts through Gmail SMTP")
-    parser.add_argument("--notify-test", action="store_true", help="Send a test ntfy.sh notification")
-    parser.add_argument("--email-test", action="store_true", help="Send a test Gmail email")
+    parser.add_argument("--notification", action="store_true", help="Send alerts as macOS notifications")
+    parser.add_argument("--reminder", action="store_true", help="Create alerts as macOS Reminders")
+    parser.add_argument("--notification-test", action="store_true", help="Send a test macOS notification")
+    parser.add_argument("--reminder-test", action="store_true", help="Create a test macOS reminder")
     args = parser.parse_args()
 
-    if args.notify_test:
-        print("Sending test ntfy notification...")
-        publish_ntfy_alert("Test notification from Doctolib checker. If you see this, ntfy.sh is working!")
+    if args.notification_test:
+        print("Sending test macOS notification...")
+        show_macos_notification("Test notification from Doctolib checker. If you see this, macOS notifications are working!")
         print("Done.")
-    elif args.email_test:
-        print("Sending test email...")
-        send_gmail_alert("Test email from Doctolib checker. If you see this, Gmail SMTP is working!")
+    elif args.reminder_test:
+        print("Creating test macOS reminder...")
+        create_macos_reminder("Test reminder from Doctolib checker. If you see this, macOS Reminders are working!")
         print("Done.")
     else:
-        if not args.notify and not args.email:
-            print("ERROR: choose at least one alert channel: --notify and/or --email")
+        if not args.notification and not args.reminder:
+            print("ERROR: choose at least one alert channel: --notification and/or --reminder")
             sys.exit(1)
-        sys.exit(main(use_ntfy=args.notify, use_email=args.email))
+        sys.exit(main(use_notification=args.notification, use_reminder=args.reminder))

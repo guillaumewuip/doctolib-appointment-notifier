@@ -1,6 +1,6 @@
 # doctolib-checker
 
-`doctolib-checker` continuously checks Doctolib appointment availability and sends alerts through **ntfy.sh**, **email**, or both.
+`doctolib-checker` continuously checks Doctolib appointment availability and sends alerts as **macOS notifications**, **macOS Reminders**, or both.
 
 Before I was using this script https://github.com/Schlaurens/doctolib-checker but it was bit hard to deal with URLs so I wanted to create my own, so I would like to thanks to https://github.com/Schlaurens for the idea.
 
@@ -30,16 +30,8 @@ The script reads all settings from `settings.json`.
     "https://www.doctolib.de/hausarztlich-tatige-internist-in/berlin/claudio-lamprecht/booking/availabilities?specialityId=1286&telehealth=false&placeId=practice-639665&insuranceSectorEnabled=true&insuranceSector=public&motiveIds%5B%5D=8102915&pid=practice-639665&insurance_sector=public&source=profile"
   ],
   "notifications": {
-    "ntfy": {
-      "server": "https://ntfy.sh",
-      "topic": "your-topic"
-    },
-    "email": {
-      "sender": "your_gmail_address@gmail.com",
-      "app_password": "your_16_char_gmail_app_password",
-      "recipient": "recipient@example.com",
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587
+    "macos": {
+      "reminder_list": "Doctolib"
     }
   }
 }
@@ -55,6 +47,7 @@ The script reads all settings from `settings.json`.
   - direct `availabilities.json` URL
   - booking URL (`/booking/availabilities?...`) — auto-resolved
   - doctor/search page URL — script tries to extract availability URLs
+- `notifications.macos.reminder_list`: name of the Reminders list used for `--reminder` alerts. The list is created if missing. Default: `Reminders`.
 
 ## 3. Which Doctolib link should you paste?
 
@@ -82,24 +75,16 @@ If you paste a doctor page or search page instead, the script will still try to 
 Choose at least one notification channel:
 
 ```bash
-python doctolib_checker.py --notify
-python doctolib_checker.py --email
-python doctolib_checker.py --notify --email
+python doctolib_checker.py --notification
+python doctolib_checker.py --reminder
+python doctolib_checker.py --notification --reminder
 ```
 
-If you run without `--notify` or `--email`, the script exits with an error.
+If you run without `--notification` or `--reminder`, the script exits with an error.
 
 ## 5. Test notifications
 
 ```bash
-python doctolib_checker.py --notify-test
-python doctolib_checker.py --email-test
+python doctolib_checker.py --notification-test
+python doctolib_checker.py --reminder-test
 ```
-
-## Gmail setup note
-
-For Gmail, use an **App Password** (not your normal account password):
-
-1. Enable 2-Step Verification on Google account.
-2. Create App Password for Mail.
-3. Put that value in `notifications.email.app_password`.
