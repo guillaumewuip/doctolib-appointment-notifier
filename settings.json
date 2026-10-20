@@ -10,11 +10,13 @@
   "doctors": [
     "https://www.doctolib.fr/dermatologue/nantes/sandra-lachaise/booking/availabilities?specialityId=6&telehealth=false&placeId=practice-1159&isNewPatient=true&isNewPatientBlocked=false&motiveIds%5B%5D=12652&source=external_referral",
     "https://www.doctolib.fr/dermatologue/nantes/nathalie-soueidan-le-leannec/booking/availabilities?specialityId=6&telehealth=false&placeId=practice-1159&isNewPatient=true&isNewPatientBlocked=false&motiveIds%5B%5D=12652&source=external_referral",
-    "https://www.doctolib.fr/dermatologue/nantes/anabelle-brocard/booking/availabilities?specialityId=6&telehealth=false&placeId=practice-1159&isNewPatient=true&isNewPatientBlocked=false&motiveIds%5B%5D=9993405&source=external_referral"
+    "https://www.doctolib.fr/dermatologue/nantes/anabelle-brocard/booking/availabilities?specialityId=6&telehealth=false&placeId=practice-1159&isNewPatient=true&isNewPatientBlocked=false&motiveIds%5B%5D=9993405&source=external_referral",
+    "https://www.doctolib.fr/dermatologue/nantes/gregor-hirschfeld/booking/availabilities?specialityId=6&telehealth=false&placeId=practice-562326&isNewPatient=true&isNewPatientBlocked=false&motiveIds%5B%5D=217900&pid=practice-562326&source=profile",
+    "https://www.doctolib.fr/centre-de-sante/nantes/centre-de-sante-nantes-bellamy-elsan/booking/availabilities?specialityId=6&telehealth=false&placeId=practice-880145&isNewPatient=true&isNewPatientBlocked=false&motiveIds%5B%5D=16133964&practitionerId=88710708&pid=practice-880145&source=profile&speciality_ids%5B%5D=6"
   ],
   "notifications": {
     "macos": {
-      "reminder_list": "Doctolib"
+      "reminder_list": "Reminders"
     }
   }
 }

@@ -595,11 +595,6 @@ def main(use_notification, use_reminder):
     print(f"[{now}] Starting Doctolib checker...")
     print(f"  Checking {len(urls)} doctor(s) for appointments between {search_start_day} and {search_end_day}")
     print(f"  Interval: {check_interval_seconds}s")
-    dispatch_alert(
-        f"Doctolib checker started.\nChecking {len(urls)} doctor(s) for appointments up to {search_end_day}.",
-        via_notification=use_notification,
-        via_reminder=use_reminder,
-    )
 
     iteration = 0
     while True:
