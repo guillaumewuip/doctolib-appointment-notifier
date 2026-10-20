@@ -106,6 +106,7 @@ def parse_booking_url(booking_url: str) -> dict:
         "insurance_sector": insurance_sector,
         "practice_id":      practice_id,       # None if NO_PREFERENCE
         "practitioner_id":  practitioner_id,   # None for solo practitioners
+        "domain":           parsed.netloc or "www.doctolib.de",
     }
 
 
@@ -113,13 +114,13 @@ def parse_booking_url(booking_url: str) -> dict:
 # Step 2: Fetch info.json
 # ---------------------------------------------------------------------------
 
-def fetch_info_json(profile_slug: str, locale: str = "en") -> dict:
+def fetch_info_json(profile_slug: str, locale: str = "en", base_url: str = BASE_URL) -> dict:
     """
     GET /online_booking/api/slot_selection_funnel/v1/info.json?profile_slug=<slug>
 
     Returns 410 for nonexistent slugs (not because the endpoint is retired).
     """
-    url = BASE_URL + INFO_JSON_PATH
+    url = base_url + INFO_JSON_PATH
     params = {"profile_slug": profile_slug, "locale": locale}
     resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
     resp.raise_for_status()
@@ -225,6 +226,7 @@ def build_availability_urls(
     telehealth: str = "false",
     start_date: str | None = None,
     limit: int = DEFAULT_LIMIT,
+    base_url: str = BASE_URL,
 ) -> list:
     """
     agenda_ids joined with "-"  (CONFIRMED from working examples).
@@ -252,7 +254,7 @@ def build_availability_urls(
         urls.append({
             "motive_id":   m["motive_id"],
             "motive_name": m["motive_name"],
-            "url":         BASE_URL + AVAILABILITY_PATH + "?" + urlencode(params),
+            "url":         base_url + AVAILABILITY_PATH + "?" + urlencode(params),
         })
     return urls
 
@@ -298,7 +300,7 @@ def build_from_booking_url(
         raise ValueError("Could not extract profile_slug from URL")
 
     print(f"\n[2] Fetching info.json for slug={parsed['profile_slug']!r} …")
-    info = fetch_info_json(parsed["profile_slug"])
+    info = fetch_info_json(parsed["profile_slug"], base_url="https://" + parsed["domain"])
     data_block = info.get("data") or info
     print(f"    OK — {len(data_block.get('visit_motives') or [])} motive(s), "
           f"{len(data_block.get('agendas') or [])} agenda(s)")
@@ -325,6 +327,7 @@ def build_from_booking_url(
         telehealth=parsed["telehealth"],
         start_date=start_date,
         limit=limit,
+        base_url="https://" + parsed["domain"],
     )
     print(f"\n[4] availabilities.json URLs:")
     for u in urls:

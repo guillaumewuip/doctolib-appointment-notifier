@@ -477,7 +477,7 @@ def resolve_url_entry_to_templates(url_entry, agenda_override=None):
         if not parsed_booking["profile_slug"]:
             raise ValueError("Could not extract profile_slug from booking URL")
 
-        info = fetch_info_json(parsed_booking["profile_slug"])
+        info = fetch_info_json(parsed_booking["profile_slug"], base_url="https://" + parsed_booking["domain"])
         mappings = extract_motive_mappings(
             info,
             filter_motive_ids=parsed_booking["motive_ids"] or None,
@@ -493,6 +493,7 @@ def resolve_url_entry_to_templates(url_entry, agenda_override=None):
             telehealth=parsed_booking["telehealth"],
             start_date=search_start_day,
             limit=search_horizon_days,
+            base_url="https://" + parsed_booking["domain"],
         )
         templates = []
         for item in built_urls:
@@ -632,7 +633,7 @@ def main(use_notification, use_reminder):
                             print(f"total={json_data['total']} but no slot before limit date.")
 
                     # if next available slot is before the limit date
-                    elif datetime.datetime.strptime(
+                    elif json_data.get("next_slot") and datetime.datetime.strptime(
                         json_data["next_slot"][:10], "%Y-%m-%d"
                     ) <= datetime.datetime.strptime(search_end_day, "%Y-%m-%d"):
                         print(f"Slot found via next_slot: {parse_slot_timestamp(json_data['next_slot'])}")
