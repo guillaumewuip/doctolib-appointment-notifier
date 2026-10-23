@@ -106,12 +106,14 @@ def create_macos_reminder(alert_text):
     escaped_text = escape_applescript(alert_text)
     escaped_list = escape_applescript(list_name)
 
+    # Due date makes the reminder actually fire an alert (Mac + iPhone/Watch
+    # via sync) instead of silently sitting in the list.
     script = f'''tell application "Reminders"
     if not (exists list "{escaped_list}") then
         make new list with properties {{name:"{escaped_list}"}}
     end if
     tell list "{escaped_list}"
-        make new reminder with properties {{name:"Doctolib appointment available", body:"{escaped_text}"}}
+        make new reminder with properties {{name:"Doctolib appointment available", body:"{escaped_text}", due date:(current date) + 60}}
     end tell
 end tell'''
 
@@ -131,6 +133,16 @@ def dispatch_alert(alert_text, via_notification=False, via_reminder=False):
         show_macos_notification(alert_text)
     if via_reminder:
         create_macos_reminder(alert_text)
+
+
+def open_booking_page_in_dia(page_url):
+    """Open the booking page in the Dia browser to grab the slot fast."""
+
+    subprocess.run(
+        ["open", "-a", "Dia", page_url],
+        check=True,
+        timeout=15,
+    )
 
 
 def normalize_availabilities_url(url):
@@ -508,7 +520,11 @@ def resolve_url_entry_to_templates(url_entry, agenda_override=None):
 
 
 def resolve_source_urls(url_entries_to_resolve):
-    """Resolve all settings URL entries into final API URLs with concrete start/limit values."""
+    """Resolve all settings URL entries into final API URLs with concrete start/limit values.
+
+    Returns a list of (api_url, source_entry_url) pairs so alerts can open the
+    original booking page for the doctor that matched.
+    """
 
     resolved_templates = []
     seen_templates = set()
@@ -529,7 +545,7 @@ def resolve_source_urls(url_entries_to_resolve):
         for template in templates:
             if template and template not in seen_templates:
                 seen_templates.add(template)
-                resolved_templates.append(template)
+                resolved_templates.append((template, normalized_entry))
 
     if not resolved_templates:
         raise ValueError(
@@ -537,15 +553,18 @@ def resolve_source_urls(url_entries_to_resolve):
         )
 
     resolved_urls = []
-    for template in resolved_templates:
+    for template, entry_url in resolved_templates:
         parsed = urllib.parse.urlsplit(template)
         query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
         query["start_date"] = [search_start_day]
         query["limit"] = [str(search_horizon_days)]
         final_query = urllib.parse.urlencode(query, doseq=True)
         resolved_urls.append(
-            urllib.parse.urlunsplit(
-                (parsed.scheme, parsed.netloc, parsed.path, final_query, "")
+            (
+                urllib.parse.urlunsplit(
+                    (parsed.scheme, parsed.netloc, parsed.path, final_query, "")
+                ),
+                entry_url,
             )
         )
 
@@ -603,7 +622,7 @@ def main(use_notification, use_reminder):
             now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"[{now}] Check #{iteration}")
 
-            for i, url in enumerate(urls, 1):
+            for i, (url, source_url) in enumerate(urls, 1):
                 try:
                     print(f"  Doctor {i}/{len(urls)}...", end=" ", flush=True)
 
@@ -624,6 +643,7 @@ def main(use_notification, use_reminder):
                                     via_notification=use_notification,
                                     via_reminder=use_reminder,
                                 )
+                                open_booking_page_in_dia(source_url)
                         else:
                             print(f"total={json_data['total']} but no slot before limit date.")
 
@@ -640,6 +660,7 @@ def main(use_notification, use_reminder):
                                 via_notification=use_notification,
                                 via_reminder=use_reminder,
                             )
+                            open_booking_page_in_dia(source_url)
 
                     else:
                         next_slot = json_data.get("next_slot", "unknown")

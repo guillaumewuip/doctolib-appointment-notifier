@@ -1,6 +1,6 @@
 {
   "execution": {
-    "check_in_n_seconds": 300
+    "check_in_n_seconds": 150
   },
   "checking_window": {
     "start": "2026-11-01",
