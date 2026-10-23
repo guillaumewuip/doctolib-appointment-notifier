@@ -21,11 +21,11 @@ for arg in "$@"; do
   esac
 done
 
-PROFILE_DIR="$HOME/.doctolib-booking-agent/chrome-profile"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROFILE_DIR="$SCRIPT_DIR/chrome-profile"
 PORT=9777
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$HOME/.doctolib-booking-agent/logs"
+LOG_DIR="$SCRIPT_DIR/logs"
 MODEL="${BOOKING_AGENT_MODEL:-zai/glm-5.3-flash}"
 TIMEOUT="${BOOKING_AGENT_TIMEOUT:-300}"
 
@@ -34,8 +34,8 @@ fail() {
   exit 3
 }
 
-LOCK_FILE="$HOME/.doctolib-booking-agent/running.pid"
-mkdir -p "$(dirname "$LOCK_FILE")"
+LOCK_FILE="$SCRIPT_DIR/running.pid"
+mkdir -p "$SCRIPT_DIR"
 if [[ -f "$LOCK_FILE" ]] && kill -0 "$(cat "$LOCK_FILE")" 2>/dev/null; then
   fail "another booking attempt (pid $(cat "$LOCK_FILE")) is still running"
 fi

@@ -163,7 +163,7 @@ def fire_booking_agent(page_url, slot_hint):
             print(f"WARNING: booking agent not found at {booking_agent_script}, skipping auto-booking.")
         return
 
-    log_path = pathlib.Path.home() / ".doctolib-booking-agent" / "logs"
+    log_path = booking_agent_script.parent / "logs"
     log_path.mkdir(parents=True, exist_ok=True)
     log_file = (log_path / f"fire-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.log").open("w")
     try:

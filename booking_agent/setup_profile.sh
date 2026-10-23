@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE_DIR="$HOME/.doctolib-booking-agent/chrome-profile"
+PROFILE_DIR="$(cd "$(dirname "$0")" && pwd)/chrome-profile"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 mkdir -p "$PROFILE_DIR"

@@ -106,7 +106,7 @@ crashes the checker loop.
 ```
 
 Log in to doctolib.fr in the Chrome window that opens, then close that window.
-The session cookie persists in `~/.doctolib-booking-agent/chrome-profile`.
+The session cookie persists in `booking_agent/chrome-profile/` (gitignored).
 
 ### Test it
 
@@ -119,7 +119,7 @@ The session cookie persists in `~/.doctolib-booking-agent/chrome-profile`.
 ```
 
 Exit codes: `0` booked/reached confirmation, `1` not authenticated, `2` slot gone, `3` failed.
-Logs live in `~/.doctolib-booking-agent/logs/`.
+Logs live in `booking_agent/logs/` (gitignored).
 
 Only one attempt runs at a time; a new attempt is skipped while another is still booking.
 Environment overrides: `BOOKING_AGENT_MODEL` (default `zai/glm-5.3-flash`),
