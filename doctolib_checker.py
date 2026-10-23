@@ -145,6 +145,42 @@ def open_booking_page_in_dia(page_url):
     )
 
 
+booking_agent_script = pathlib.Path(__file__).parent.resolve() / "booking_agent" / "run_booking_agent.sh"
+booking_agent_missing_warned = False
+
+
+def fire_booking_agent(page_url, slot_hint):
+    """Spawn the booking agent in the background to grab the slot.
+
+    Fire-and-forget: a booking failure must never take down the checker loop.
+    """
+
+    global booking_agent_missing_warned
+
+    if not booking_agent_script.exists():
+        if not booking_agent_missing_warned:
+            booking_agent_missing_warned = True
+            print(f"WARNING: booking agent not found at {booking_agent_script}, skipping auto-booking.")
+        return
+
+    log_path = pathlib.Path.home() / ".doctolib-booking-agent" / "logs"
+    log_path.mkdir(parents=True, exist_ok=True)
+    log_file = (log_path / f"fire-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.log").open("w")
+    try:
+        subprocess.Popen(
+            ["bash", str(booking_agent_script), page_url, slot_hint],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        print(f"  Booking agent fired (slot hint: {slot_hint}), log: {log_file.name}")
+    except Exception as e:
+        print(f"WARNING: could not fire booking agent: {e}")
+    finally:
+        log_file.close()
+
+
 def normalize_availabilities_url(url):
     """Normalize an availabilities URL and enforce start_date/limit placeholders."""
 
@@ -638,12 +674,14 @@ def main(use_notification, use_reminder):
                             # Only notify if we haven't notified for this URL before
                             if url not in already_alerted_urls:
                                 already_alerted_urls.add(url)
+                                slot_time = parse_slot_timestamp(closest_slot)
                                 dispatch_alert(
-                                    f"New appointment available on Doctolib (Doctor {i})! \nNumber of available appointments: {json_data['total']} \nEarliest appointment: {parse_slot_timestamp(closest_slot)}",
+                                    f"New appointment available on Doctolib (Doctor {i})! \nNumber of available appointments: {json_data['total']} \nEarliest appointment: {slot_time}",
                                     via_notification=use_notification,
                                     via_reminder=use_reminder,
                                 )
                                 open_booking_page_in_dia(source_url)
+                                fire_booking_agent(source_url, slot_time)
                         else:
                             print(f"total={json_data['total']} but no slot before limit date.")
 
@@ -655,12 +693,14 @@ def main(use_notification, use_reminder):
                         # Only notify if we haven't notified for this URL before
                         if url not in already_alerted_urls:
                             already_alerted_urls.add(url)
+                            slot_time = parse_slot_timestamp(json_data["next_slot"])
                             dispatch_alert(
-                                f"New appointment available on Doctolib (Doctor {i}) within your limit time! \nEarliest appointment: {parse_slot_timestamp(json_data['next_slot'])}",
+                                f"New appointment available on Doctolib (Doctor {i}) within your limit time! \nEarliest appointment: {slot_time}",
                                 via_notification=use_notification,
                                 via_reminder=use_reminder,
                             )
                             open_booking_page_in_dia(source_url)
+                            fire_booking_agent(source_url, slot_time)
 
                     else:
                         next_slot = json_data.get("next_slot", "unknown")

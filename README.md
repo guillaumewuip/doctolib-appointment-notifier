@@ -88,3 +88,39 @@ If you run without `--notification` or `--reminder`, the script exits with an er
 python doctolib_checker.py --notification-test
 python doctolib_checker.py --reminder-test
 ```
+
+## 6. Auto-booking agent
+
+Slots are rare and get booked by other people fast. When the checker finds a slot, it now also fires
+a background `pi` agent that drives a dedicated Chrome profile over CDP and attempts the booking
+while the notification fires.
+
+The agent refuses to run if doctolib.fr is not authenticated in the automation profile
+(it stops with `not_authenticated` and never tries to log in). A booking failure never
+crashes the checker loop.
+
+### One-time setup
+
+```bash
+./booking_agent/setup_profile.sh
+```
+
+Log in to doctolib.fr in the Chrome window that opens, then close that window.
+The session cookie persists in `~/.doctolib-booking-agent/chrome-profile`.
+
+### Test it
+
+```bash
+# Dry run: walks the funnel but stops before the final confirm button.
+./booking_agent/run_booking_agent.sh "<your booking URL>" --dry-run
+
+# Real run (books the appointment!):
+./booking_agent/run_booking_agent.sh "<your booking URL>"
+```
+
+Exit codes: `0` booked/reached confirmation, `1` not authenticated, `2` slot gone, `3` failed.
+Logs live in `~/.doctolib-booking-agent/logs/`.
+
+Only one attempt runs at a time; a new attempt is skipped while another is still booking.
+Environment overrides: `BOOKING_AGENT_MODEL` (default `zai/glm-5.3-flash`),
+`BOOKING_AGENT_TIMEOUT` (default `300` seconds).
