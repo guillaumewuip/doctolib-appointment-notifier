@@ -7,5 +7,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 exec nix-shell \
-  -p "python3.withPackages (p: [ p.requests ])" \
+  -p "python3.withPackages (p: [ p.requests p.websocket-client ])" \
   --run "python3 doctolib_checker.py --notification --reminder"

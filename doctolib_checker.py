@@ -1,10 +1,12 @@
 import argparse
 import datetime
 import json
+import os
 import pathlib
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib
 import urllib.error
@@ -13,6 +15,8 @@ import urllib.request
 from collections.abc import Iterable
 
 import requests
+
+from auth_probe import open_login_tab, probe_auth_state
 from doctolib_url_builder import (
     build_availability_urls,
     extract_motive_mappings,
@@ -145,8 +149,128 @@ def open_booking_page_in_dia(page_url):
     )
 
 
-booking_agent_script = pathlib.Path(__file__).parent.resolve() / "booking_agent" / "run_booking_agent.sh"
+booking_agent_dir = pathlib.Path(__file__).parent.resolve() / "booking_agent"
+booking_agent_script = booking_agent_dir / "run_booking_agent.sh"
+automation_chrome_script = booking_agent_dir / "open_automation_chrome.sh"
 booking_agent_missing_warned = False
+
+
+def booking_agent_is_running():
+    """Check the booking agent lock file for a live process."""
+
+    lock_file = booking_agent_script.parent / "running.pid"
+    if not lock_file.exists():
+        return False
+    try:
+        pid = int(lock_file.read_text().strip())
+        os.kill(pid, 0)
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def ensure_automation_chrome():
+    """Open (or activate) the automation Chrome window used by the auth probe
+    and the booking agent. Idempotent: the script reuses a running Chrome."""
+
+    try:
+        result = subprocess.run(
+            ["bash", str(automation_chrome_script)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return {"opened": True, "detail": "automation Chrome open"}
+        detail = (result.stderr or result.stdout or f"exit {result.returncode}").strip()
+        return {"opened": False, "detail": detail}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"opened": False, "detail": str(e)}
+
+
+def auth_probe_loop(use_notification, use_reminder):
+    """Hourly probe of the automation Chrome's Doctolib login state.
+
+    Server-side session expiry cannot be prevented, so the guarantee is fast
+    detection: alert once on the transition to logged_out so the user can log
+    back in before the next real slot fires the booking agent. The probe's
+    navigation also counts as session activity while logged in.
+    """
+
+    config = runtime_settings.get("booking_agent") or {}
+    interval = int(config.get("auth_probe_interval_seconds", 3600))
+    cdp_port = int(config.get("cdp_port", 9777))
+    account_name = config.get("account_name") or ""
+
+    last_state = None
+    while True:
+        if booking_agent_is_running():
+            print("  Auth probe skipped: booking agent running.")
+        else:
+            result = probe_auth_state(cdp_port, account_name)
+            if result["state"] == "unknown" and "unreachable" in result["detail"]:
+                ensured = ensure_automation_chrome()
+                if ensured["opened"]:
+                    result = probe_auth_state(cdp_port, account_name)
+            state = result["state"]
+            print(f"  Auth probe: {state} ({result['detail']})")
+            if state == "logged_out" and last_state != "logged_out":
+                opened = open_login_tab(cdp_port)
+                print(f"  Login tab: {opened['detail']}")
+                dispatch_alert(
+                    "Doctolib session expired in the automation Chrome. "
+                    "Its window should now be open on Doctolib. "
+                    "Click 'Se connecter' (top right) and log in. "
+                    "If no window, run booking_agent/open_automation_chrome.sh. "
+                    "Tick 'stay signed in' if the login offers it.",
+                    via_notification=use_notification,
+                    via_reminder=use_reminder,
+                )
+            last_state = state
+        time.sleep(interval)
+
+
+def parse_agent_outcome(log_text):
+    """Extract the last outcome JSON object from a booking agent log."""
+
+    matches = re.findall(r'^\s*\{"outcome".*\}$', log_text, re.MULTILINE)
+    if not matches:
+        return None
+    try:
+        return json.loads(matches[-1])
+    except json.JSONDecodeError:
+        return None
+
+
+def watch_booking_agent(log_path, slot_hint):
+    """Watch a fired booking agent's log and react to its outcome.
+
+    Runs in a daemon thread so the checker loop is never blocked. On a session
+    expiry (not_authenticated), alert the user to log back in.
+    """
+
+    agent_timeout = int(runtime_settings["execution"].get("booking_agent_timeout", 300))
+    deadline = time.monotonic() + agent_timeout + 30
+    while time.monotonic() < deadline:
+        time.sleep(5)
+        try:
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        outcome = parse_agent_outcome(log_text)
+        if not outcome:
+            continue
+        if outcome.get("outcome") == "not_authenticated":
+            dispatch_alert(
+                "Booking agent could not book: Doctolib session expired. "
+                "Log in again in the automation Chrome window, then rerun the checker. "
+                f"Slot was {slot_hint}. Log: {log_path.name}",
+                via_notification=True,
+                via_reminder=True,
+            )
+        print(f"  Booking agent outcome: {outcome.get('outcome')} ({outcome.get('detail', '')})")
+        return
+    print(f"WARNING: booking agent log {log_path.name} had no outcome before timeout.")
 
 
 def fire_booking_agent(page_url, slot_hint):
@@ -165,7 +289,8 @@ def fire_booking_agent(page_url, slot_hint):
 
     log_path = booking_agent_script.parent / "logs"
     log_path.mkdir(parents=True, exist_ok=True)
-    log_file = (log_path / f"fire-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.log").open("w")
+    log_file_path = log_path / f"fire-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+    log_file = log_file_path.open("w")
     try:
         subprocess.Popen(
             ["bash", str(booking_agent_script), page_url, slot_hint],
@@ -174,7 +299,12 @@ def fire_booking_agent(page_url, slot_hint):
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-        print(f"  Booking agent fired (slot hint: {slot_hint}), log: {log_file.name}")
+        print(f"  Booking agent fired (slot hint: {slot_hint}), log: {log_file_path.name}")
+        threading.Thread(
+            target=watch_booking_agent,
+            args=(log_file_path, slot_hint),
+            daemon=True,
+        ).start()
     except Exception as e:
         print(f"WARNING: could not fire booking agent: {e}")
     finally:
@@ -650,6 +780,18 @@ def main(use_notification, use_reminder):
     print(f"[{now}] Starting Doctolib checker...")
     print(f"  Checking {len(urls)} doctor(s) for appointments between {search_start_day} and {search_end_day}")
     print(f"  Interval: {check_interval_seconds}s")
+
+    automation_chrome = ensure_automation_chrome()
+    print(
+        f"  Automation Chrome: {'open' if automation_chrome['opened'] else 'UNAVAILABLE'}"
+        f" ({automation_chrome['detail']})"
+    )
+
+    threading.Thread(
+        target=auth_probe_loop,
+        args=(use_notification, use_reminder),
+        daemon=True,
+    ).start()
 
     iteration = 0
     while True:

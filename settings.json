@@ -2,6 +2,11 @@
   "execution": {
     "check_in_n_seconds": 150
   },
+  "booking_agent": {
+    "cdp_port": 9777,
+    "account_name": "Guillaume Clochard",
+    "auth_probe_interval_seconds": 3600
+  },
   "checking_window": {
     "start": "2026-11-01",
     "end": "2027-05-01",

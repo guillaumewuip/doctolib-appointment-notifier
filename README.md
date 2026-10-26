@@ -48,6 +48,17 @@ The script reads all settings from `settings.json`.
   - booking URL (`/booking/availabilities?...`) — auto-resolved
   - doctor/search page URL — script tries to extract availability URLs
 - `notifications.macos.reminder_list`: name of the Reminders list used for `--reminder` alerts. The list is created if missing. Default: `Reminders`.
+- `booking_agent.cdp_port`: CDP port of the automation Chrome the booking agent drives. Default: `9777`.
+- `booking_agent.account_name`: name shown in the Doctolib header when logged in. The hourly auth probe uses it to detect a logged-in session.
+- `booking_agent.auth_probe_interval_seconds`: seconds between login-state probes of the automation Chrome. Default: `3600`. The probe alerts once when the session expired, and skips probes while the booking agent runs.
+
+## 2b. Staying logged in
+
+The booking agent drives a dedicated Chrome profile in `booking_agent/chrome-profile` (CDP port 9777). It never types credentials, so logging in is a manual step.
+
+- When the session expires, the checker alerts you and opens the automation Chrome on Doctolib, brought to front. Click **Se connecter** (top right) and log in there.
+- If no window is visible, run `./booking_agent/open_automation_chrome.sh`. It starts the automation Chrome with the right profile if needed, opens Doctolib, and activates the window.
+- The hourly auth probe re-checks the login state and stays quiet once you are logged in again.
 
 ## 3. Which Doctolib link should you paste?
 
