@@ -22,7 +22,10 @@ Speed matters: slots vanish in seconds. Act promptly and avoid re-reading whole 
 ## 3. Authentication gate (do this FIRST, right after the page loads and the cookie banner is handled)
 
 Look for a "Se connecter" or "Connexion" link or button in the header or on the page.
-If found, the user is NOT authenticated. Immediately print this as the last line and stop:
+If found, do NOT conclude immediately. The site often silently re-authenticates during the first
+seconds after a load (a /session/refresh_tokens redirect). Wait 5 seconds, re-read the header,
+and check once more. Only if the login link is still visible after that second check is the user
+NOT authenticated. Then immediately print this as the last line and stop:
 
 {"outcome":"not_authenticated","detail":"login link visible on page"}
 

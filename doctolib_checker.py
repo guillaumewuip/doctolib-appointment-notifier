@@ -242,12 +242,16 @@ def parse_agent_outcome(log_text):
         return None
 
 
-def watch_booking_agent(log_path, slot_hint):
+def watch_booking_agent(log_path, slot_hint, page_url):
     """Watch a fired booking agent's log and react to its outcome.
 
     Runs in a daemon thread so the checker loop is never blocked. On a session
-    expiry (not_authenticated), alert the user to log back in.
+    expiry (not_authenticated), alert the user to log back in. On any outcome
+    other than a booking, re-arm the URL so the slot alerts and fires again on
+    a later check instead of staying silenced forever.
     """
+
+    global already_alerted_urls
 
     agent_timeout = int(runtime_settings["execution"].get("booking_agent_timeout", 300))
     deadline = time.monotonic() + agent_timeout + 30
@@ -260,6 +264,9 @@ def watch_booking_agent(log_path, slot_hint):
         outcome = parse_agent_outcome(log_text)
         if not outcome:
             continue
+        if outcome.get("outcome") not in ("booked", "reached_confirmation"):
+            already_alerted_urls.discard(page_url)
+            print("  Slot re-armed: booking did not complete, will alert again.")
         if outcome.get("outcome") == "not_authenticated":
             dispatch_alert(
                 "Booking agent could not book: Doctolib session expired. "
@@ -280,6 +287,10 @@ def fire_booking_agent(page_url, slot_hint):
     """
 
     global booking_agent_missing_warned
+
+    if booking_agent_is_running():
+        print("  Booking attempt already running, not firing again.")
+        return
 
     if not booking_agent_script.exists():
         if not booking_agent_missing_warned:
@@ -302,7 +313,7 @@ def fire_booking_agent(page_url, slot_hint):
         print(f"  Booking agent fired (slot hint: {slot_hint}), log: {log_file_path.name}")
         threading.Thread(
             target=watch_booking_agent,
-            args=(log_file_path, slot_hint),
+            args=(log_file_path, slot_hint, page_url),
             daemon=True,
         ).start()
     except Exception as e:
